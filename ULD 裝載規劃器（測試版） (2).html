@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ULD 裝載規劃器（測試版）</title>
+<style>
+:root{--bg:#eef1f4;--fg:#18202a;--card:#fff;--bd:#cfd6de;--ac:#0b5cad;--mu:#5d6b7a;--on:#fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12171d;--fg:#e6ebf0;--card:#1b232c;--bd:#33414f;--ac:#5aa6f0;--mu:#93a2b2;--on:#08121c;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#12171d;--fg:#e6ebf0;--card:#1b232c;--bd:#33414f;--ac:#5aa6f0;--mu:#93a2b2;--on:#08121c;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 "Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif}
+main{display:grid;grid-template-columns:minmax(320px,440px) 1fr;gap:12px;padding:12px;max-width:1400px;margin:auto}
+@media(max-width:860px){main{grid-template-columns:1fr}}
+section{background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:12px;margin-bottom:12px}
+h1{font-size:18px;margin:0 0 2px}h2{font-size:14px;margin:0 0 8px}
+.mu{color:var(--mu);font-size:12px}
+.sc{overflow-x:auto}
+table{border-collapse:collapse;width:100%}th{font-weight:600;font-size:12px;text-align:left;color:var(--mu)}
+td input[type=number]{width:56px}td input:not([type]){width:78px}
+input,select,button{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--bd);border-radius:4px;padding:4px 6px}
+button{cursor:pointer}button.p{background:var(--ac);color:var(--on);border-color:var(--ac);font-weight:600;padding:8px 14px}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+.u{display:flex;flex-wrap:wrap;gap:6px 14px}.u label{white-space:nowrap}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+#sum{font-size:16px;font-weight:700;margin:0 0 6px}
+.c{display:block;width:100%;text-align:left;margin:0;padding:8px}
+.c.on{border-color:var(--ac);box-shadow:inset 3px 0 0 var(--ac)}
+.sw{display:inline-block;width:10px;height:10px;margin-right:4px;border-radius:2px}
+#cv{flex:1;min-height:240px;position:relative}
+.lf{max-height:calc(100vh - 24px);overflow-y:auto}
+.rt{display:flex;flex-direction:column;height:calc(100vh - 24px);min-height:560px}
+.rt>section{margin-bottom:12px}
+.rt>.tv{flex:1;display:flex;flex-direction:column;min-height:0;margin-bottom:0}
+#cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px;max-height:22vh;overflow:auto}
+@media(max-width:860px){.lf{max-height:none}.rt{height:auto;min-height:0}#cv{flex:none;height:60vh}#cards{max-height:none}}
+#cv canvas{display:block;position:absolute;left:0;top:0}
+</style></head><body>
+<main>
+<div class="lf">
+<section><h1>ULD 裝載規劃器（測試版）</h1><div class="mu">單位：公分。長寬可互換；勾「可翻轉」時高度也可變成立放。</div></section>
+<section><h2>1. 貨物</h2>
+<div class="sc"><table><thead><tr><th>名稱</th><th>長</th><th>寬</th><th>高</th><th>件數</th><th>可堆疊</th><th>可翻轉</th><th></th></tr></thead><tbody id="rows"></tbody></table></div>
+<div class="row"><button id="add">新增貨物</button><label>間隙 <input id="gap" type="number" value="0" min="0" style="width:50px"> cm</label></div></section>
+<section><h2>2. 可用裝備（複選）</h2><div class="u" id="ulds"></div>
+<div class="row"><label>目標 <select id="mode"><option value="vol">總容積最小（浪費最少）</option><option value="cnt">裝備數量最少</option></select></label></div>
+<div class="row"><button class="p" id="go">計算最佳打法</button><span class="mu" id="st"></span></div></section>
+</div>
+<div class="rt">
+<section id="res" hidden><div id="sum"></div><div class="mu" id="info"></div><div id="cards" style="margin-top:8px"></div></section>
+<section class="tv"><h2 id="vt">3D 預覽</h2><div id="cv"></div><div class="mu">拖曳旋轉、滾輪或雙指縮放。上方點選各裝備可切換檢視。</div></section>
+</div>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+// 裝備定義：L=長(x)、W=寬(y)；p=橫截面輪廓 [寬度位置, 該處最大高度]，可自行調整
+const U={
+ 'PMC(Q5)':{L:318,W:244,p:[[0,299],[127.67,299],[228,190],[228.01,0]]},
+ 'PRA(L3)':{L:244,W:487.68,p:[[0,190],[116.07,299],[371.61,299],[487.68,190]]},
+ 'PMC(QF)':{L:318,W:244,p:[[0,160],[244,160]]},
+ 'PLA(QF)':{L:318,W:154,p:[[0,160],[154,160]]},
+ 'AKE(LD3)':{L:150,W:150,p:[[0,150],[150,150]]}};
+const DEF=['PMC(QF)','PLA(QF)','AKE(LD3)'];
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const hAt=(p,y)=>{for(let i=1;i<p.length;i++)if(y<=p[i][0]){const a=p[i-1],b=p[i];return a[1]+(b[1]-a[1])*(y-a[0])/((b[0]-a[0])||1)}return p[p.length-1][1]};
+const uvol=u=>{let s=0;for(let i=1;i<u.p.length;i++)s+=(u.p[i-1][1]+u.p[i][1])/2*(u.p[i][0]-u.p[i-1][0]);return s*u.L};
+const V={};for(const n in U)V[n]=uvol(U[n]);
+const cmp=(a,b)=>{for(let i=0;i<a.length;i++)if(a[i]!==b[i])return a[i]-b[i];return 0};
+const col=k=>'hsl('+((k*67)%360)+',62%,55%)';
+
+function addRow(n,l,w,h,q,st,tip){
+ const tr=document.createElement('tr');
+ tr.innerHTML='<td><input value="'+esc(n)+'"></td><td><input type=number value='+l+'></td><td><input type=number value='+w+'></td><td><input type=number value='+h+'></td><td><input type=number value='+q+'></td><td><input type=checkbox '+(st?'checked':'')+'></td><td><input type=checkbox '+(tip?'checked':'')+'></td><td><button title="刪除">×</button></td>';
+ tr.querySelector('button').onclick=()=>tr.remove();$('#rows').appendChild(tr)}
+addRow('貨物A',120,100,100,16,1,0);
+$('#add').onclick=()=>addRow('貨物'+String.fromCharCode(65+$('#rows').children.length%26),100,80,80,1,1,0);
+$('#ulds').innerHTML='<label><input type=checkbox id="all"> 全選</label>'+Object.keys(U).map(n=>'<label><input type=checkbox class="uc" value="'+n+'" '+(DEF.includes(n)?'checked':'')+'> '+n+' <span class="mu">'+Math.max(U[n].L,U[n].W)+'×'+Math.min(U[n].L,U[n].W)+'</span></label>').join('');
+$('#all').onchange=e=>document.querySelectorAll('.uc').forEach(c=>c.checked=e.target.checked);
+
+// ---------- 裝箱 ----------
+function orients(d,tip,ori){
+ let L=[[d[0],d[1],d[2]],[d[1],d[0],d[2]]];
+ if(tip)L.push([d[0],d[2],d[1]],[d[2],d[0],d[1]],[d[1],d[2],d[0]],[d[2],d[1],d[0]]);
+ L=L.filter((o,i)=>L.findIndex(q=>q[0]==o[0]&&q[1]==o[1]&&q[2]==o[2])==i);
+ return L.sort((p,q)=>ori?(p[0]-p[1])-(q[0]-q[1]):(q[0]-q[1])-(p[0]-p[1]))}
+const free=(P,x,y,z,a,b,c)=>P.every(p=>x+a<=p.x||p.x+p.a<=x||y+b<=p.y||p.y+p.b<=y||z+c<=p.z||p.z+p.c<=z);
+function supp(P,x,y,z,a,b){let s=0;
+ for(const p of P)if(Math.abs(p.z+p.c-z)<1e-6){const ox=Math.min(x+a,p.x+p.a)-Math.max(x,p.x),oy=Math.min(y+b,p.y+p.b)-Math.max(y,p.y);
+  if(ox>0&&oy>0){if(!p.st)return false;s+=ox*oy}}
+ return s>=.75*a*b}
+function packOne(u,rem,pref,ori){
+ const P=[];let eps=[[0,0,0]],v=0;
+ for(const it of rem){
+  const os=orients(it.d,it.tip,ori);let B=null;
+  for(const e of eps)for(let oi=0;oi<os.length;oi++){
+   const x=e[0],z=e[2],a=os[oi][0],b=os[oi][1],c=os[oi][2];let y=e[1];
+   while(y+b<=u.W&&hAt(u.p,y)<z+c-1e-6)y++;
+   if(x+a>u.L||y+b>u.W||z+c>Math.min(hAt(u.p,y),hAt(u.p,y+b))+1e-6)continue;
+   const key=[z,pref?y:x,pref?x:y,oi];
+   if(B&&cmp(key,B.key)>=0)continue;
+   if(!free(P,x,y,z,a,b,c)||(z>0&&!supp(P,x,y,z,a,b)))continue;
+   B={key,k:it.k,st:it.st,x,y,z,a,b,c}}
+  if(!B)continue;
+  P.push(B);v+=B.a*B.b*B.c;
+  eps=eps.filter(q=>!(q[0]>=B.x&&q[0]<B.x+B.a&&q[1]>=B.y&&q[1]<B.y+B.b&&q[2]>=B.z&&q[2]<B.z+B.c));
+  eps.push([B.x+B.a,B.y,B.z],[B.x,B.y+B.b,B.z]);if(B.st)eps.push([B.x,B.y,B.z+B.c])}
+ return{placed:P,v}}
+let memo=new Map();
+function pack(un,rem){
+ const key=un+'|'+rem.map(i=>i.k).join(',');if(memo.has(key))return memo.get(key);
+ let best=null;
+ for(const pref of[0,1])for(const ori of[0,1]){const r=packOne(U[un],rem,pref,ori);if(!best||r.v>best.v)best=r}
+ memo.set(key,best);return best}
+function removeK(rem,pl){const n={};pl.forEach(p=>n[p.k]=(n[p.k]||0)+1);return rem.filter(i=>n[i.k]?(n[i.k]--,false):true)}
+
+// 尾端最佳化：剩餘貨物用 ≤4 個裝備的所有組合找最佳解
+function tail(rem,sel,mode){
+ if(rem.length>40)return null;
+ const rv=rem.reduce((s,i)=>s+i.d[0]*i.d[1]*i.d[2],0);
+ const ns=sel.slice().sort((a,b)=>V[b]-V[a]),combos=[];
+ (function g(s,c){if(c.length)combos.push(c);if(c.length<4)for(let i=s;i<ns.length;i++)g(i,c.concat(ns[i]))})(0,[]);
+ let best=null;
+ for(const c of combos){
+  if(c.reduce((s,n)=>s+V[n],0)<rv)continue;
+  let r=rem;const res=[];
+  for(const n of c){const p=pack(n,r);if(!p.placed.length)break;res.push({n,placed:p.placed});r=removeK(r,p.placed);if(!r.length)break}
+  if(r.length)continue;
+  const tv=res.reduce((s,x)=>s+V[x.n],0),cost=mode==='vol'?[tv,res.length]:[res.length,tv];
+  if(!best||cmp(cost,best.cost)<0)best={res,cost}}
+ return best&&best.res}
+
+function solve(cargo,sel,gap,mode){
+ memo=new Map();let items=[];
+ cargo.forEach((c,k)=>{for(let j=0;j<c.q;j++)items.push({k,d:[c.l+gap,c.w+gap,c.h+gap],st:c.st,tip:c.tip})});
+ items.sort((a,b)=>(+b.st)-(+a.st)||b.d[0]*b.d[1]*b.d[2]-a.d[0]*a.d[1]*a.d[2]);
+ const bad=new Set(cargo.map((c,k)=>k).filter(k=>{const it=items.find(i=>i.k===k);return !sel.some(n=>pack(n,[it]).placed.length)}));
+ const unfit=items.filter(i=>bad.has(i.k));let rem=items.filter(i=>!bad.has(i.k));
+ const plan=[];
+ while(rem.length){
+  const t=tail(rem,sel,mode);
+  if(t){plan.push(...t);break}
+  let best=null;
+  for(const n of sel){const r=pack(n,rem);if(!r.placed.length)continue;const s=mode==='vol'?r.v/V[n]:r.v;if(!best||s>best.s+1e-9)best={n,r,s}}
+  if(!best)break;
+  plan.push({n:best.n,placed:best.r.placed});rem=removeK(rem,best.r.placed)}
+ plan.sort((a,b)=>V[b.n]-V[a.n]);
+ return{plan,unfit}}
+
+// ---------- 介面 ----------
+let PLAN=[],CARGO=[],GAP=0;
+$('#go').onclick=()=>{
+ const cargo=[...$('#rows').children].map((tr,k)=>{const i=tr.querySelectorAll('input');return{name:i[0].value||('貨物'+(k+1)),l:+i[1].value,w:+i[2].value,h:+i[3].value,q:Math.floor(+i[4].value),st:i[5].checked,tip:i[6].checked}}).filter(c=>c.l>0&&c.w>0&&c.h>0&&c.q>0);
+ const sel=[...document.querySelectorAll('.uc:checked')].map(e=>e.value);
+ if(!cargo.length||!sel.length){$('#st').textContent='請輸入貨物並至少選一種裝備';return}
+ $('#st').textContent='計算中…';
+ setTimeout(()=>{
+  const gap=Math.max(0,+$('#gap').value||0),t0=performance.now();
+  const r=solve(cargo,sel,gap,$('#mode').value);
+  CARGO=cargo;PLAN=r.plan;GAP=gap;
+  $('#st').textContent='耗時 '+Math.round(performance.now()-t0)+' ms';
+  render(r.unfit)},20)};
+function render(unfit){
+ $('#res').hidden=false;
+ const cnt={};PLAN.forEach(p=>cnt[p.n]=(cnt[p.n]||0)+1);
+ $('#sum').textContent=PLAN.length?Object.keys(cnt).map(n=>cnt[n]+' × '+n).join(' + '):'沒有可用的裝法';
+ const tot=CARGO.reduce((s,c)=>s+c.q,0),put=PLAN.reduce((s,p)=>s+p.placed.length,0);
+ const cv=PLAN.reduce((s,p)=>s+p.placed.reduce((q,x)=>q+CARGO[x.k].l*CARGO[x.k].w*CARGO[x.k].h,0),0),uv=PLAN.reduce((s,p)=>s+V[p.n],0);
+ $('#info').textContent='共 '+tot+' 件，已裝 '+put+' 件'+(uv?'；整體容積利用率 '+(cv/uv*100).toFixed(1)+'%':'')+(unfit.length?'；無法放入（尺寸超出所有已選裝備）'+unfit.length+' 件':'');
+ $('#cards').innerHTML=PLAN.map((p,i)=>{
+  const n={};p.placed.forEach(x=>n[x.k]=(n[x.k]||0)+1);
+  const u=p.placed.reduce((s,x)=>s+CARGO[x.k].l*CARGO[x.k].w*CARGO[x.k].h,0)/V[p.n]*100;
+  return '<button class="c" data-i="'+i+'"><b>#'+(i+1)+' '+p.n+'</b>　'+p.placed.length+' 件・利用率 '+u.toFixed(1)+'%<br>'+Object.keys(n).map(k=>'<span class="sw" style="background:'+col(+k)+'"></span>'+esc(CARGO[k].name)+' × '+n[k]).join('　')+'</button>'}).join('');
+ document.querySelectorAll('.c').forEach(b=>b.onclick=()=>show(+b.dataset.i));
+ if(PLAN.length)show(0)}
+
+// ---------- 3D ----------
+let R,S,C,O,G;
+function initGL(){
+ const el=$('#cv');R=new THREE.WebGLRenderer({antialias:true,alpha:true});el.appendChild(R.domElement);
+ S=new THREE.Scene();C=new THREE.PerspectiveCamera(40,1,1,6000);O=new THREE.OrbitControls(C,R.domElement);
+ S.add(new THREE.AmbientLight(0xffffff,.7));const d=new THREE.DirectionalLight(0xffffff,.6);d.position.set(300,700,400);S.add(d);
+ G=new THREE.Group();S.add(G);
+ const rs=()=>{const w=el.clientWidth,h=el.clientHeight;R.setSize(w,h);C.aspect=w/h;C.updateProjectionMatrix()};
+ new ResizeObserver(rs).observe(el);rs();
+ (function a(){requestAnimationFrame(a);O.update();R.render(S,C)})()}
+function show(i){
+ if(!R)initGL();
+ document.querySelectorAll('.c').forEach(b=>b.classList.toggle('on',+b.dataset.i===i));
+ while(G.children.length)G.remove(G.children[0]);
+ const pl=PLAN[i],u=U[pl.n],mh=Math.max(...u.p.map(q=>q[1]));
+ $('#vt').textContent='3D 預覽：#'+(i+1)+' '+pl.n+'（'+pl.placed.length+' 件）';
+ const poly=[[0,0],[u.W,0]].concat(u.p.slice().reverse()),pos=[];
+ poly.forEach((a,j)=>{const b=poly[(j+1)%poly.length];
+  [0,u.L].forEach(x=>pos.push(x,a[1],a[0],x,b[1],b[0]));pos.push(0,a[1],a[0],u.L,a[1],a[0])});
+ const lg=new THREE.BufferGeometry();lg.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+ G.add(new THREE.LineSegments(lg,new THREE.LineBasicMaterial({color:0x8a94a6})));
+ const fl=new THREE.Mesh(new THREE.BoxGeometry(u.L,2,u.W),new THREE.MeshLambertMaterial({color:0x9aa3b2,transparent:true,opacity:.5}));
+ fl.position.set(u.L/2,-1,u.W/2);G.add(fl);
+ pl.placed.forEach(p=>{
+  const g=new THREE.BoxGeometry(p.a-GAP,p.c-GAP,p.b-GAP),m=new THREE.Mesh(g,new THREE.MeshLambertMaterial({color:new THREE.Color(col(p.k))}));
+  m.position.set(p.x+p.a/2,p.z+p.c/2,p.y+p.b/2);G.add(m);
+  const e=new THREE.LineSegments(new THREE.EdgesGeometry(g),new THREE.LineBasicMaterial({color:0x1a1f26}));e.position.copy(m.position);G.add(e)});
+ G.position.set(-u.L/2,-mh/2,-u.W/2);
+ const d=Math.max(u.L,u.W*1.5)*1.5;C.position.set(d*.8,d*.6,d*.9);O.target.set(0,0,0);O.update()}
+</script></body></html>
